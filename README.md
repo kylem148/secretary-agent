@@ -25,7 +25,7 @@ Six workflows work end to end today:
 
 ## Architecture
 
-*Summary view. Full deep-dive in [docs/architecture.md](./docs/architecture.md).*
+_Summary view. Full deep-dive in [docs/architecture.md](./docs/architecture.md)._
 
 ```mermaid
 flowchart TB
@@ -86,7 +86,7 @@ Every scheduling decision the orchestrator makes happens with full awareness of:
 - **Calendar rules.** Things like 15-minute buffers between meetings, daily caps for external meetings, weekly free-time floors, working hours, and timezone-correct slot proposals. Defaults are sensible, but they're context for the LLM, not constraints it enforces. A high-priority meeting can override a buffer if the reasoning holds up, the same way a thoughtful assistant would make the call.
 - **Soft conflicts.** Travel days, deadlines stored as commitments, weekly priorities that would make a meeting poorly timed. The system surfaces these instead of silently scheduling around them.
 
-None of these are hardcoded rules the LLM has to follow. They're *context the LLM reasons with.* The orchestrator gets the full picture every time it makes a scheduling decision and produces a proposal that explains its reasoning. The user always sees the proposal before anything is booked.
+None of these are hardcoded rules the LLM has to follow. They're _context the LLM reasons with._ The orchestrator gets the full picture every time it makes a scheduling decision and produces a proposal that explains its reasoning. The user always sees the proposal before anything is booked.
 
 Every behavior has a safe default and a memory override slot. The user changes anything by saying it in chat: "skip the agenda requirement for direct reports," "treat all @acme.com as P1," "block Friday afternoons from now on." No settings forms. No code changes. Just conversation.
 
@@ -94,7 +94,7 @@ Every behavior has a safe default and a memory override slot. The user changes a
 
 ## Security model
 
-*Summary view. Full model in [docs/security-model.md](./docs/security-model.md).*
+_Summary view. Full model in [docs/security-model.md](./docs/security-model.md)._
 
 Two layers. Injection check at ingest, action check at the tool boundary.
 
@@ -106,13 +106,33 @@ The Action Checker is a pre-hook on every write tool (gmail_send, calendar_creat
 
 ## Screenshots
 
-[Screenshot placeholders. To be added]
+### When to meet — weekly grid in settings
 
-- The "when to meet" weekly grid in settings: open / preferred / focus / blocked, the user's source-of-truth for time defense
-- Two-column chat: orchestrator on the left, parallel task cards on the right
-- A scheduling negotiation in progress, with timeline updates streaming live as the agent finds slots, drafts outreach, monitors for replies
-- The `[PROPOSAL]` card rendering inside a task: subject, body, recipient, approve/edit/discard
-- An inbound scheduling decision showing the agent's reasoning. Why a specific slot was chosen given contact tier, priority, and weekly schedule
+The user's source-of-truth for time defense. Cells are tagged Open, Preferred, Focus, or Blocked. The orchestrator weighs these as context, not as hard constraints, when ranking slots for an incoming meeting.
+
+![Weekly schedule grid in settings](docs/screenshots/01-weekly-grid.png)
+
+### Two-column chat
+
+Orchestrator conversation on the left. Parallel task cards on the right, updating as agents work.
+
+![Two-column chat layout](docs/screenshots/02-chat-layout.png)
+
+### Full negotiation loop
+
+A scheduling thread end to end. The user asks for a meeting. The Scheduler spawns sub-agents, drafts outreach, sends, monitors for the reply, and confirms. The conversation thread shows every step.
+
+**Step 1: outreach drafted and sent.** The Scheduler picked candidate slots that respect the weekly grid above, drafted the outreach as a [PROPOSAL] in the conversation thread, and sent it after approval.
+
+![Outreach email loop in progress](docs/screenshots/03-scheduling-email-loop.png)
+
+**Step 2: reply received, confirmation drafted.** When the recipient's reply hits Gmail, the EmailIngestor matches it to the existing chain and routes it directly to the Scheduler. The Scheduler reads the reply, drafts the confirmation, surfaces it for approval.
+
+![Confirmation email drafted](docs/screenshots/04-scheduling-confirm-email.png)
+
+**Step 3: meeting on the calendar.** Confirmation sent. Calendar event created via the Action Checker on `calendar_write`. Thread closed.
+
+![Meeting confirmed and on calendar](docs/screenshots/05-scheduling-complete.png)
 
 ---
 
@@ -124,17 +144,17 @@ That bug was a symptom. The disease was that the orchestrator was a bottleneck, 
 
 I rebuilt the entire system as v2. Five architectural decisions changed:
 
-| | v1 | v2 |
-|---|---|---|
-| **Routing** | Hardcoded conditionals (`if event.type == "scheduling_request" → inbound_scheduling_agent`) | LLM orchestrator reasons from event payload + agent_state |
-| **Agent communication** | Mediated through orchestrator and main.py | Direct A2A. Orchestrator spawns agents, agents spawn sub-agents, no middleman |
-| **Draft state** | Externally retrieved from session memory | Lives inside `self.messages`. The context window IS the draft store |
-| **Security checks** | Embedded in the middleman pattern | Pre-hooks at the MCP tool boundary, regardless of caller |
-| **Cross-agent visibility** | Orchestrator polled / interrupted agents to know status | Shared `agent_state` table in PostgreSQL. Orchestrator reads, never interrupts |
+|                            | v1                                                                                          | v2                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Routing**                | Hardcoded conditionals (`if event.type == "scheduling_request" → inbound_scheduling_agent`) | LLM orchestrator reasons from event payload + agent_state                      |
+| **Agent communication**    | Mediated through orchestrator and main.py                                                   | Direct A2A. Orchestrator spawns agents, agents spawn sub-agents, no middleman  |
+| **Draft state**            | Externally retrieved from session memory                                                    | Lives inside `self.messages`. The context window IS the draft store            |
+| **Security checks**        | Embedded in the middleman pattern                                                           | Pre-hooks at the MCP tool boundary, regardless of caller                       |
+| **Cross-agent visibility** | Orchestrator polled / interrupted agents to know status                                     | Shared `agent_state` table in PostgreSQL. Orchestrator reads, never interrupts |
 
 The v1 repo is preserved as `secretary-agent-v1` for anyone who wants to see the architecture I replaced.
 
-*Full reasoning, alternatives considered, and consequences in [ADR-0001](./docs/adr/0001-v1-to-v2-pivot.md).*
+_Full reasoning, alternatives considered, and consequences in [ADR-0001](./docs/adr/0001-v1-to-v2-pivot.md)._
 
 ---
 
